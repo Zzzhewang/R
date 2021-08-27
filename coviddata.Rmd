@@ -1,0 +1,266 @@
+---
+title: "HW5"
+author: "Zhe Wang"
+date: "2020/10/21"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+data<-read.csv('covid_data_pdb_v2.csv',sep=',',head=TRUE)
+data1<-read.csv('HW5.csv',sep=',',head=TRUE)
+n<-nrow(data1)
+m<-nrow(data)
+for(i in 1 : m){
+  if((data$covid_count_sep22[i]-data$covid_count_sep8)[i]/data$Tot_Population_ACS_14_18[i]*100000 < 50)
+  {
+    data1$y[i]<-1
+  }
+  else
+  {
+    data1$y[i]<-0
+  }
+}
+num<-n/2 + 0.5
+train<-sample(1:n,num)
+testdata<-data1[-train,]
+traindata<-data1[train,]
+```
+
+## Problem 1
+
+# a
+
+SVC:
+```{r svc,warning=FALSE}
+set.seed(1)
+library(e1071)
+c<-c(0.01,0.1,1,5,10,100)
+mse <- rep(NA, length(c))
+for(i in 1:length(c))
+{
+  svc.fit<-svm(y ~ ., data=traindata, kernel="linear", cost=c[i])
+  mse[i]<-mean(ifelse(1*(predict(svc.fit, testdata) > 0.5) - testdata$y == 0,0,1))
+}
+plot(c,mse)
+svc.mse<-min(mse)
+cost1<-c[which.min(mse)]
+svc.fit<-svm(y ~ ., data=na.omit(traindata), kernel="linear", cost=cost1)
+```
+
+
+SVM:
+```{r svm}
+set.seed(1)
+c<-c(0.01,0.1,1,5,10,100)
+d<-c(0.01,0.1,1,5,10,100)
+mse <- matrix(NA, nrow=length(c), ncol=length(d))
+for(i in 1:length(c))
+{
+  for (j in 1:length(d)) {
+      svc.fit<-svm(y ~ ., data=traindata, kernel="polynomial", cost=c[i] , gamma=d[j])
+  mse[i,j]<-mean(ifelse(1*(predict(svc.fit, testdata) > 0.5) - testdata$y == 0,0,1))
+  }
+}
+mse.1<-rep(NA,length(d))
+for(i in 1:length(d))
+{
+  mse.1[i]<-mse[which.min(mse[,i]),i]
+}
+plot(d,mse.1,xlab="Gamma",ylab="mse")
+svc.mse2<-min(mse)
+cost2<-c[which.min(mse)]
+gamma2<-d[which.min(mse)]
+svmp.fit<-svm(y ~ ., data=na.omit(traindata), kernel="polynomial", cost=cost2 , gamma=gamma2)
+```
+
+
+
+SVM-r:
+```{r svm_r}
+set.seed(1)
+d<-c(0.01,0.1,1,10)
+mse <- matrix(NA, nrow=length(c), ncol=length(d))
+for(i in 1:length(c))
+{
+  for (j in 1:length(d)) {
+      svc.fit<-svm(y ~ ., data=traindata, kernel="radial", cost=c[i] , gamma=d[j])
+  mse[i,j]<-mean(ifelse(1*(predict(svc.fit, testdata) > 0.5) - testdata$y == 0,0,1))
+  }
+}
+mse.1<-rep(NA,length(d))
+for(i in 1:length(d))
+{
+  mse.1[i]<-mse[which.min(mse[,i]),i]
+}
+plot(d,mse.1,xlab="Gamma",ylab="mse")
+svc.mse3<-min(mse)
+cost3<-c[which.min(mse)]
+gamma3<-d[which.min(mse)]
+svmr.fit<-svm(y ~ ., data=na.omit(traindata), kernel="radial", cost=cost3 , gamma=gamma3)
+```
+
+Parameter:
+```{r parameter}
+cost<-c(cost1,cost2,cost3)
+gamma<-c("don,t have",gamma2,gamma3)
+name1<-c("svc","svmp","svmr")
+table1<-data.frame(name1,cost,gamma)
+print(table1)
+```
+
+So, the parameter is get by using plot and I print before.
+
+```{r testerror}
+mse<-c(svc.mse,svc.mse2,svc.mse3)
+table3<-data.frame(name1,mse)
+print(table3)
+```
+
+
+# b
+From the results, we can find that SVC has maximum test error, while SVM with kernel = radial has the smallest test error. 
+For SVC, the test error is biggest because the C we chose is not big. Although for the model, the smaller C means lower variance, the bias for this model will be really higher and you cannot get the better results.
+
+For SVM by radial kernel, the gamma we chose is big enough and the cost of it is also big enough. It also can be intended for the binary classification setting, that under this situation, we have only 2 classification setting be response. So, SVM by radial kernel is better fit this data.
+
+# c
+The the number of support vectors of each methods is show below:
+```{r vectorsupport}
+vectnumber<-c(svc.fit$tot.nSV,svmp.fit$tot.nSV,svmr.fit$tot.nSV)
+table2<-data.frame(name1,vectnumber)
+print(table2)
+```
+SVC has the minimum support vectors as 545. It shows that the parameter we choose is not small, so the support vector may be a little bit small. So, it have less biased while higher variance.
+
+SVM with polynomial kernel's support vector number is near SVC's. So, it also shows that the parameter we choose is not small, so the support vector may be a little bit small. So, it have less biased while higher variance.
+
+For SVM with radial kernel, the number of support vectors is biggest. For radial kernel, the bigger gamma means smaller basis and good results, while it variance will become higher. For polynomial kernel is same as radial kernel.
+
+# d
+```{r tree1}
+set.seed(1)
+library(rpart)
+tree1 <- rpart(y ~ ., data=traindata, method="class")
+plotcp(tree1)
+which.min(tree1$cptable[,"xerror"])
+
+ctree.cp <- tree1$cptable[2,"CP"]
+prune.ctree <- prune(tree1,cp=ctree.cp)
+tree.mse <- mean(ifelse(1*(predict(prune.ctree, testdata)[,2] > 0.5) - testdata$y == 0,0,1))
+tree.mse
+```
+From the plot and result, we can choose alpha = 2. And the test error of tree classification is equals to 0.1405648.
+
+# f
+```{r tree2}
+plot(prune.ctree, margin = 0.1)
+text(prune.ctree, all= T , use.n = T, cex=0.5)
+prune.ctree
+```
+
+Pkm_bar of each terminal nodes is the probability of ypredict can equal to the corresponding y. For nodes pct_Pop_45_64_ACS_14_18< 29.495, the response in this region is equal = 0. And the probability of each response in this region be 0is equal to 0.9. 
+
+ For pct_NH_Asian_alone_CEN_2010< 0.55 , the response in this region is equal = 0. And the probability of each response in this region be 0 is equal to 0.7. 
+ 
+  For pct_NH_Asian_alone_CEN_2010>= 0.55 , the response in this region is equal = 1. And the probability of each response in this region be 1 is equal to 0.3. 
+  
+# f
+Considering that SVM with radial kernel has the least test error, I will prefer using it as my method.
+
+## Problem 2
+```{r repart1,warning=FALSE}
+library(ISLR)
+attach(Hitters)
+datause<-na.omit(Hitters)
+datause$logSalary<-log(datause$Salary)
+#Gini-part
+Gini<-function(data1)
+{
+  n<-table(data1)
+  Gi<-0
+  for(i in 1:nrow(n))
+  {
+    Gi<-Gi + (n[i]/length(data1))^2
+  }
+  b<-1 - Gi
+  return(b)
+}
+
+#min.G
+min.G<-function(x){
+  a<-which.min(x[1,])
+  return(x[2,a])
+}
+
+#min Gini
+fp<-function(data1,data2,data3,data4)
+{
+  nodes<-sort(unique(data2))+0.5
+  n<-length(nodes)
+  number<-nrow(data1)
+  Gin<-rep(NA,n)
+  less<-rep(NA,n)
+  more<-rep(NA,n)
+  Year.s<-rep(NA,number)
+  for(i in 1:n)
+    {
+        data.less<-data3[which(data2<nodes[i])]
+        data.more<-data3[which(data2>nodes[i])]
+        b1<-mean(data.less)
+        b2<-mean(data.more)
+        Gin[i]<-sum((data.less-b1)^2)+sum((data.more-b2)^2)
+        less[i]<-length(data.less)
+        more[i]<-length(data.more)
+  }
+  a<-data.frame(nodes,less,more,Gin)
+  return(a$nodes[which.min(a$Gin)])
+}
+#origin split
+a<-fp(datause,datause$Years,datause$logSalary,datause$Hits)
+point1<-a
+data.t1<-datause[which(datause$Years < point1),]
+data.t2<-datause[which(datause$Years >= point1),]
+nrow(data.t1)
+nrow(data.t2)
+```
+Because the stopping rule is minsplit = 100, so data.t1<100 means that we cannot find the split node in data.t1.
+So, we start our split finding in data.t2 by using Hits
+
+```{r split-second}
+t2<-fp(data.t2,data.t2$Hits,data.t2$logSalary,data.t2$Years)
+point2<-t2
+data.t3<-data.t1[which(data.t1$Hits < point2),]
+data.t4<-data.t1[which(data.t1$Hits >= point2),]
+nrow(data.t3)
+nrow(data.t4)
+```
+At this time, the node in data.t2 suit the stopping rule and our tree classification should be stop. So, we can get the node as:
+
+```{r nodes}
+a1<-c("Years nodes","Hits nodes")
+a2<-c(point1,point2)
+table4<-data.frame(a1,a2)
+print(table4)
+```
+
+
+Thus, from the results, we can split the data in three regions. R1={Years<4.5},R2={Years>=4.5|Hits<117.5} and R3={Years>3.5|Hits>=117.5}
+
+Then, we use rpart function to make sure whether we are right.
+```{r rpart2}
+library(rpart)
+fomula<-logSalary~Years+Hits
+tree3<-rpart(fomula,data = datause,minsplit=100)
+tree3
+plot(tree3,margin = 0.1)
+text(tree3, all= T , use.n = T, cex = 0.6)
+```
+
+
+So, we can make sure that our results is true. Therefore, the results that we get before is what we want.
+
+
+
+

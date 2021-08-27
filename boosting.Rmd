@@ -1,0 +1,76 @@
+---
+title: "boosting"
+author: "Zhe Wang"
+date: "2020/12/9"
+output: word_document
+---
+
+```{r message=F, warning=F}
+library(tidyverse)
+library(magrittr)
+library(DescTools)
+library(gridExtra)
+library(pROC)
+library(caret)
+library(car)
+library(mlbench)
+library(gbm)
+```
+
+# Load data
+```{r}
+trainfeatures = read_csv("training_set_features.csv")
+trainlabels = read_csv("training_set_labels.csv")
+full= trainfeatures %>% 
+  inner_join(trainlabels, by='respondent_id')
+
+features = names(trainfeatures)[-1]
+targets = names(trainlabels)[-1]
+full[features] <- lapply(full[features], factor) 
+```
+# Train test split
+```{r}
+trainindex <- createDataPartition(full$seasonal_vaccine, p=0.7, list=FALSE)
+train <- full[trainindex,]
+test <- full[-trainindex,]
+```
+
+```{r}
+seasonal = as.formula(paste("seasonal_vaccine", paste(features, collapse=" + "), sep=" ~ "))
+gbm_seasonal <-gbm(seasonal, data = train, distribution = "gaussian")
+spredict<-predict(gbm_seasonal,newdata=test,type="response")
+mse=mean((test$seasonal_vaccine-spredict)^2)
+mse
+```
+```{r}
+h1n1 = as.formula(paste("h1n1_vaccine", paste(features, collapse=" + "), sep=" ~ "))
+gbm_h1n1 <- gbm(h1n1, data = train, distribution = "gaussian")
+hpredict<-predict(gbm_h1n1,newdata=test,type="response")
+mse=mean((test$h1n1_vaccine-hpredict)^2)
+mse
+```
+
+```{r}
+ROCRpred<-prediction(spredict,test$seasonal_vaccine)
+ROCRperf<-performance(ROCRpred,'tpr','fpr')
+plot(ROCRperf, colorize = TRUE)
+auc(test$seasonal_vaccine,spredict)
+```
+
+```{r}
+ROCRpred1<-prediction(hpredict,test$h1n1_vaccine)
+ROCRperf1<-performance(ROCRpred1,'tpr','fpr')
+plot(ROCRperf1, colorize = TRUE)
+auc(test$h1n1_vaccine,hpredict)
+```
+
+```{r}
+Xtest = read_csv("test_set_features.csv")
+Xtest[features] <- lapply(Xtest[features], addNA)
+h1n1_prediction <- predict(gbm_h1n1, Xtest, type="response")
+seasonal_prediction <- predict(gbm_seasonal, Xtest, type="response")
+submission = data.frame(respondent_id = Xtest$respondent_id,
+                           h1n1_vaccine = h1n1_prediction,
+                           seasonal_vaccine = seasonal_prediction)
+write.csv(submission,"gbmsubmit.csv", row.names = FALSE, quote=FALSE)
+```

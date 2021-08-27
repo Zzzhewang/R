@@ -1,0 +1,76 @@
+---
+title: "svm"
+author: "Zhe Wang"
+date: "2020/12/9"
+output: word_document
+---
+```{r setup}
+library(tidyverse)
+library(skimr)
+library(knitr)       
+library(corrplot)     
+library(caret)       
+library(MASS)         
+library(tidyverse)   
+library(glmnet)       
+library(tree)        
+library(randomForest) 
+library(gbm)         
+library(e1071) 
+```
+
+```{r loading data, warning=FALSE, eval=FALSE}
+
+training_labels   <- read_csv("training_set_labels.csv")
+training_data_onehot <- read_csv("training_set_features.csv")
+training_dataset <- merge(training_data_onehot, training_labels, by = "respondent_id")
+```
+
+```{r}
+skim(training_dataset)
+```
+```{r lasso_prep, warning=FALSE}
+trainfeatures = read_csv("training_set_features.csv")
+trainlabels = read_csv("training_set_labels.csv")
+full= merge(trainfeatures,trainlabels, by='respondent_id')
+
+features = names(trainfeatures)[-1]
+targets = names(trainlabels)[-1]
+full[features] <- lapply(full[features], factor) 
+trainindex <- createDataPartition(full$seasonal_vaccine, p=0.7, list=FALSE)
+train <- full[trainindex,]
+test <- full[-trainindex,]
+train[features] <- lapply(train[features], addNA) 
+test[features] <- lapply(test[features], addNA)
+```
+
+```{r}
+h1n1_train<-train
+h1n1_train[,c("seasonal_vaccine")]<-list(NULL)
+h1n1_test<-test
+h1n1_test[,c("seasonal_vaccine")]<-list(NULL)
+set.seed(140)
+#h1n1_train$h1n1_vaccine <- as.factor(train$h1n1_vaccine)
+svc.fit <- svm(h1n1_vaccine~., data=h1n1_train,kernel="linear",cost=0.01)
+summary(svc.fit)
+seasonal_train<-train
+seasonal_train[,c("h1n1_vaccine")]<-list(NULL)
+seasonal_test<-test
+seasonal_test[,c("h1n1_vaccine")]<-list(NULL)
+set.seed(140)
+#seasonal_train$seasonal_vaccine <- as.factor(train$seasonal_vaccine)
+svc.fit1 <- svm(seasonal_vaccine~., data=seasonal_train,kernel="linear",cost=0.01)
+
+```
+```{r}
+Xtest = read_csv("test_set_features.csv")
+Xtest[features] <- lapply(Xtest[features], addNA)
+train.pred<-predict(svc.fit,Xtest)
+train.pred1<-predict(svc.fit1,Xtest)
+```
+```{r}
+submission = data.frame(respondent_id = Xtest$respondent_id,
+                           h1n1_vaccine = train.pred,
+                           seasonal_vaccine = train.pred1)
+write.csv(submission,"svmsubmit.csv", row.names = FALSE, quote=FALSE)
+```
